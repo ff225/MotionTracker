@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.jetbrains.kotlin.android)
     id("kotlin-kapt")
     id("dagger.hilt.android.plugin")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -57,8 +58,11 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     // Hilt
-    implementation (libs.hilt.android)
-    kapt (libs.hilt.compiler)
+    implementation(libs.hilt.android)
+    implementation(libs.androidx.runtime.livedata)
+    implementation(libs.firebase.common.ktx)
+    implementation(libs.firebase.storage.ktx)
+    kapt(libs.hilt.compiler)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -75,4 +79,9 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+
+    implementation(libs.firebase.bom)
+    implementation(libs.firebase.storage)
+
+    implementation(libs.androidx.work.runtime.ktx)
 }
