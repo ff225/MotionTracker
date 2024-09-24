@@ -18,5 +18,7 @@ needed.
 - Magnetometer (measures magnetic field strength)
 
 ✅ Data Logging: Save sensor data in CSV format for post-processing.
+
 ✅ Simple user interface to start, stop, and export sensor data.
+
 ✅ Store data on Firebase Storage Database for remote access.
