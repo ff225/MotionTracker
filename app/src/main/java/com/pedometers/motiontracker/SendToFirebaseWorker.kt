@@ -13,6 +13,7 @@ class SendToFirebaseWorker(ctx: Context, params: WorkerParameters) : CoroutineWo
     private val storage = Firebase.storage.reference
 
     override suspend fun doWork(): Result {
+
         val path = inputData.getString("file")?.toUri()
         // get file from directory
         val file = path?.let { File(it.path) }
@@ -20,6 +21,8 @@ class SendToFirebaseWorker(ctx: Context, params: WorkerParameters) : CoroutineWo
         storage.child(file!!.name).putFile(file.toUri())
             .addOnSuccessListener {
                 Log.d("SendToFirebaseWorker", "File uploaded successfully")
+                // Delete file
+                file.delete()
             }
             .addOnFailureListener {
                 Log.e("SendToFirebaseWorker", "Error uploading file", it)
