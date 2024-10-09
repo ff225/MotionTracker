@@ -7,13 +7,12 @@ import com.pedometers.motiontracker.sensor.MeasurableSensor
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
-import dagger.hilt.components.SingletonComponent
+import dagger.hilt.android.components.ServiceComponent
 import javax.inject.Qualifier
-import javax.inject.Singleton
 
 
 @Module
-@InstallIn(SingletonComponent::class)
+@InstallIn(ServiceComponent::class)
 object SensorModule {
 
     @Qualifier
@@ -29,21 +28,18 @@ object SensorModule {
     annotation class Magnetometer
 
     @Provides
-    @Singleton
     @Accelerometer
     fun provideAccelerometerSensor(app: Application): MeasurableSensor {
         return AccelerometerSensor(app)
     }
 
     @Provides
-    @Singleton
     @Gyroscope
     fun provideGyroscopeSensor(app: Application): MeasurableSensor {
         return GyroscopeSensor(app)
     }
 
     @Provides
-    @Singleton
     @Magnetometer
     fun provideMagnetometerSensor(app: Application): MeasurableSensor {
         return MagnetometerSensor(app)
