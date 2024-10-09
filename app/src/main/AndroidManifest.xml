@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH"/>
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <application
         android:name=".MotionTrackerApp"
         android:allowBackup="true"
@@ -15,7 +17,7 @@
         android:theme="@style/Theme.MotionTracker"
         tools:targetApi="31">
         <service android:name=".sensor.MonitoringService"
-            android:foregroundServiceType="shortService"/>
+            android:foregroundServiceType="health"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"
