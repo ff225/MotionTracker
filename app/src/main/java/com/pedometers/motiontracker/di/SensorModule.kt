@@ -1,4 +1,4 @@
-package com.pedometers.motiontracker
+package com.pedometers.motiontracker.di
 import android.app.Application
 import com.pedometers.motiontracker.sensor.AccelerometerSensor
 import com.pedometers.motiontracker.sensor.GyroscopeSensor
