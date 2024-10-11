@@ -62,6 +62,15 @@ dependencies {
     implementation(libs.androidx.runtime.livedata)
     implementation(libs.firebase.common.ktx)
     implementation(libs.firebase.storage.ktx)
+    implementation(files("libs/mdslib-3.15.0(1)-release.aar"))
+    implementation ("com.polidea.rxandroidble2:rxandroidble:1.10.2")
+
+    implementation ("io.reactivex.rxjava2:rxandroid:2.1.1")
+
+    implementation ("io.reactivex.rxjava2:rxjava:2.2.8")
+
+
+
     kapt(libs.hilt.compiler)
 
     implementation(libs.androidx.core.ktx)
@@ -82,6 +91,7 @@ dependencies {
 
     implementation(libs.firebase.bom)
     implementation(libs.firebase.storage)
-
+    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
+    implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.work.runtime.ktx)
 }
