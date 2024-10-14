@@ -11,7 +11,7 @@ object Movesense {
 
     var isConnected = false
 
-    var position: PositionWearable? = null
+    var position: PositionWearable? = PositionWearable.WRIST
         private set
 
     var frequencyHertz: FrequencyHertz = FrequencyHertz.HZ_13
@@ -41,5 +41,6 @@ object Movesense {
         name = null
         macAddr = null
         isConnected = false
+        position = PositionWearable.WRIST
     }
 }
