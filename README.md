@@ -13,7 +13,7 @@ needed.
 - Gyroscope (measures device rotation)
 - Magnetometer (measures magnetic field strength)
 
-⏳ Real-time acquisition of sensor data from Moveseense sensor:
+✅ Real-time acquisition of sensor data from Moveseense sensor:
 
 - Accelerometer (measures acceleration forces)
 - Gyroscope (measures device rotation)
