@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.os.Build
 import android.os.Environment
 import android.os.IBinder
 import android.util.Log
@@ -214,7 +215,7 @@ class MonitoringService : Service() {
 
                 file = File(
                     getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
-                    "${randomUUID}_${infoUser.activityType}_${infoUser.position}_${infoUser.age}_${infoUser.sex}.csv"
+                    "${randomUUID}_${infoUser.activityType}_${infoUser.position}_${infoUser.age}_${infoUser.sex}_${Build.MANUFACTURER}_${Build.MODEL}.csv"
                 )
                 fileWriter = FileWriter(file, true)
                 fileWriter?.append("Timestamp, AccelerometerX, AccelerometerY, AccelerometerZ, GyroscopeX, GyroscopeY, GyroscopeZ, MagnetometerX, MagnetometerY, MagnetometerZ, Sex, Age, Height, Weight, Position, Activity\n")
