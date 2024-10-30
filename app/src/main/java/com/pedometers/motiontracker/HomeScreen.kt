@@ -2,6 +2,7 @@ package com.pedometers.motiontracker
 
 import android.content.Intent
 import android.os.CountDownTimer
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -43,11 +44,13 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pedometers.motiontracker.data.ActivityType
+import com.pedometers.motiontracker.data.FirebaseRealTimeDatabase
 import com.pedometers.motiontracker.data.Movesense
 import com.pedometers.motiontracker.data.Position
 import com.pedometers.motiontracker.data.Sex
 import com.pedometers.motiontracker.navigation.NavigationDestination
 import com.pedometers.motiontracker.sensor.MonitoringService
+import java.util.UUID
 
 
 object HomeScreen : NavigationDestination {
@@ -56,7 +59,7 @@ object HomeScreen : NavigationDestination {
 }
 
 
-enum class Timer(val value: Long) {
+enum class Timer(var value: Long) {
     TWO_MIN(120000L),
     FIVE_MIN(300000L),
     NONE(0L)
@@ -66,21 +69,38 @@ enum class Timer(val value: Long) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    navigateToMovesense: () -> Unit
+    navigateToInfo: () -> Unit,
+    navigateToUpdateID: () -> Unit,
+    navigateToMovesense: () -> Unit,
 ) {
 
-    val context = LocalContext.current
 
+    val context = LocalContext.current
     val viewModel: MainViewModel = viewModel<MainViewModel>()
     var permission by remember { mutableStateOf(false) }
     var isEnabled by remember { mutableStateOf(true) }
     var showDialog by remember { mutableStateOf(false) }
-    var remainingTime by remember { mutableLongStateOf(120000L) }
+    var timestamp by remember {
+        mutableLongStateOf(System.currentTimeMillis())
+    }
+    val preferencesManager = PreferencesManager(context)
+
+    val uuid = preferencesManager.getUUID() ?: UUID.randomUUID().toString().also {
+        Log.d("HomeScreen", "new UUID: $it")
+        preferencesManager.saveUUID(it)
+    }
+
+    var numSteps by remember { mutableStateOf("") }
+
+    var buttonEnabled by remember {
+        mutableStateOf(false)
+    }
 
     var expandedTimer by remember { mutableStateOf(false) }
-    var timerValue by remember {
-        mutableStateOf(Timer.TWO_MIN)
+    val timerValue by remember {
+        mutableStateOf(Timer.NONE)
     }
+    var remainingTime by remember { mutableLongStateOf(Timer.NONE.value) }
 
     val launcher =
         rememberLauncherForActivityResult(contract = ActivityResultContracts.RequestPermission()) { isGranted ->
@@ -107,6 +127,8 @@ fun HomeScreen(
             MotionTrackerAppBar(
                 title = HomeScreen.titleRes,
                 canNavigateBack = false,
+                navigateToInfo = navigateToInfo,
+                navigateToUpdateID = navigateToUpdateID,
                 navigateToMovesense = navigateToMovesense
             )
         }) { innerPadding ->
@@ -143,7 +165,7 @@ fun HomeScreen(
                                         modifier = Modifier
                                     )
              */
-            ExposedDropdownMenuBox(
+            /*ExposedDropdownMenuBox(
                 expanded = expandedTimer,
                 onExpandedChange = { if (isEnabled) expandedTimer = !expandedTimer },
                 modifier = Modifier.padding(8.dp)
@@ -166,30 +188,109 @@ fun HomeScreen(
                             text = { Text(text = (time.name)) },
                             onClick = {
                                 timerValue = time
+                                remainingTime = time.value
                                 expandedTimer = false
                             })
                     }
                 }
-            }
+            }*/
             Spacer(modifier = Modifier.padding(8.dp))
             if (showDialog) {
-                TimerDialog(remainingTime = timerValue.value, onDismissRequest = {
-                    if (timerValue.value == 0L) {
-                        context.stopService(
-                            Intent(
-                                context,
-                                MonitoringService::class.java
+                AlertDialog(
+                    onDismissRequest = {
+                        if (timerValue.value == 0L) {
+                            context.stopService(
+                                Intent(
+                                    context,
+                                    MonitoringService::class.java
+                                )
                             )
-                        )
-                        showDialog = false
-                    }
+                            //showDialog = false
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                context.stopService(
+                                    Intent(
+                                        context,
+                                        MonitoringService::class.java
+                                    )
+                                )
 
-                })
+                                showDialog = false
+                            },
+                        ) {
+                            Text(text = "Annulla")
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                if (timerValue.value == 0L) {
+                                    context.stopService(
+                                        Intent(
+                                            context,
+                                            MonitoringService::class.java
+                                        )
+                                    )
+                                    //showDialog = false
+                                }
+                                Log.d("HomeScreen", "numSteps: $numSteps")
+
+
+                                FirebaseRealTimeDatabase.instance.child(uuid)
+                                    .child(timestamp.toString()).setValue(
+                                        mapOf(
+                                            "recordingID" to timestamp,
+                                            "numSteps" to numSteps
+                                        )
+                                    )
+
+                                showDialog = false
+                            },
+                            enabled = buttonEnabled && numSteps.isNotEmpty()
+                        ) {
+                            Text(text = "Invia")
+                        }
+                    },
+                    title = {
+                        Text(
+                            text = "Recording in progress\n" /*+ if (remainingTime == 0L) {
+                                //"You can stop logging anytime\n"
+                            } else {
+                                "Tempo : ${remainingTime / 1000} secondi\n"
+                            }*/ + "Effettua 50 passi"
+                        )
+                    },
+                    text = {
+                        TextField(
+                            value = numSteps,
+                            onValueChange = { steps ->
+                                numSteps = steps
+                            },
+                            label = { Text("Inserisci il numero di passi:") },
+                            enabled = buttonEnabled,
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions.Default.copy(
+                                keyboardType = KeyboardType.Number
+                            ),
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    },
+                    properties = DialogProperties(
+                        dismissOnBackPress = false,
+                        dismissOnClickOutside = false
+                    )
+                )
             }
             Row {
                 StartStopListeningButton(
                     isEnabled = viewModel.uiState.isValid,
                     startListening = {
+                        timestamp = System.currentTimeMillis()
+                        numSteps = ""
+                        buttonEnabled = true
                         isEnabled = viewModel.uiState.isValid
                         showDialog = true
                         ContextCompat.startForegroundService(
@@ -205,17 +306,12 @@ fun HomeScreen(
                                 )
                                 .putExtra("position", viewModel.uiState.position.name)
                                 .putExtra("activityType", viewModel.uiState.activityType.name)
+                                .putExtra("uuid", uuid)
+                                .putExtra("timestamp", timestamp)
                         )
-                        /*Intent(
-                            LocalContext.current,
-                            MonitoringService::class.java
-                        ).putExtra("age", viewModel.uiState.age.toInt())
-                            .putExtra("height", viewModel.uiState.height.toInt())
-                            .putExtra(
-                                "weight", viewModel.uiState.weight.toInt()
-                            ).putExtra("sex", viewModel.uiState.sex.name)
-                    )*/
+
                         if (timerValue != Timer.NONE) {
+                            buttonEnabled = false
                             val timer =
                                 object : CountDownTimer(timerValue.value, 1000) {
                                     override fun onTick(millisUntilFinished: Long) {
@@ -223,7 +319,8 @@ fun HomeScreen(
                                     }
 
                                     override fun onFinish() {
-                                        showDialog = false
+                                        //showDialog = false
+                                        buttonEnabled = true
                                         context.stopService(
                                             Intent(
                                                 context,
@@ -235,21 +332,23 @@ fun HomeScreen(
                             timer.start()
                         }
                     },
-                    stopListening = {
-                        showDialog = false
-                        context.stopService(
-                            Intent(
-                                context,
-                                MonitoringService::class.java
-                            )
-                        )
-                        //viewModel.stopListening()
-                        //isEnabled = true
-                    }
+                    /*
+                                        stopListening = {
+                                            showDialog = false
+                                            context.stopService(
+                                                Intent(
+                                                    context,
+                                                    MonitoringService::class.java
+                                                )
+                                            )
+                                            //viewModel.stopListening()
+                                            //isEnabled = true
+                                        }*/
                 )
                 Spacer(modifier = Modifier.padding(8.dp))
                 IconButton(onClick = {
                     viewModel.updateUiState(UiState())
+                    numSteps = ""
                     Movesense.reset()
                 }) {
                     Icon(Icons.Default.Refresh, contentDescription = "Reset")
@@ -437,27 +536,28 @@ fun AddUserInfo(
 fun StartStopListeningButton(
     isEnabled: Boolean,
     startListening: () -> Unit,
-    stopListening: () -> Unit,
+    //stopListening: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var isListening by remember { mutableStateOf(false) }
+    //var isListening by remember { mutableStateOf(false) }
 
     Button(
         enabled = isEnabled,
-        onClick = {
-            if (isListening) {
+        onClick = startListening
+        /*{
+            /*if (isListening) {
                 stopListening()
-            } else startListening()
+            } else */
 
-            isListening = !isListening
-        },
+            //isListening = !isListening
+        }*/,
         modifier = modifier
     ) {
-        Text(if (isListening) "Stop Listening" else "Start Listening")
+        Text("Start Listening")
     }
 }
 
-
+/*
 @Composable
 fun TimerDialog(remainingTime: Long, onDismissRequest: () -> Unit = {}) {
     AlertDialog(
@@ -472,7 +572,7 @@ fun TimerDialog(remainingTime: Long, onDismissRequest: () -> Unit = {}) {
         },
         title = { Text(text = "Recording in progress") },
         text = {
-            Text(text = if (remainingTime == 0L) "You can stop logging anytime" else "Tempo : ${remainingTime / 1000} secondi")
+
         },
         properties = DialogProperties(
             dismissOnBackPress = false,
@@ -480,3 +580,4 @@ fun TimerDialog(remainingTime: Long, onDismissRequest: () -> Unit = {}) {
         )
     )
 }
+ */
