@@ -102,7 +102,7 @@ data class UiState(
     var height: String = "",
     var weight: String = "",
     var position: Position = Position.POCKET,
-    var activityType: ActivityType = ActivityType.SLOW_WALKING,
+    var activityType: ActivityType = ActivityType.PLAIN_WALKING,
     val accelerometerValues: String = "",
     val gyroscopeValues: String = "",
     val magnetometerValues: String = "",
