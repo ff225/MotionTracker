@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.jetbrains.kotlin.android)
@@ -9,6 +11,10 @@ plugins {
 android {
     namespace = "com.pedometers.motiontracker"
     compileSdk = 34
+    // Allow buildConfig to load properties from local.properties file
+    buildFeatures {
+        buildConfig = true
+    }
 
     defaultConfig {
         applicationId = "com.pedometers.motiontracker"
@@ -16,6 +22,12 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+
+        val localProperties = project.rootProject.file("local.properties")
+        val properties = Properties()
+        properties.load(localProperties.inputStream())
+        buildConfigField("String", "FIREBASE_URL", "\"${properties.getProperty("FIREBASE_URL")}\"")
+        buildConfigField("String", "PASSWORD", "\"${properties.getProperty("PASSWORD")}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -63,11 +75,11 @@ dependencies {
     implementation(libs.firebase.common.ktx)
     implementation(libs.firebase.storage.ktx)
     implementation(files("libs/mdslib-3.15.0(1)-release.aar"))
-    implementation ("com.polidea.rxandroidble2:rxandroidble:1.10.2")
+    implementation("com.polidea.rxandroidble2:rxandroidble:1.10.2")
 
-    implementation ("io.reactivex.rxjava2:rxandroid:2.1.1")
+    implementation("io.reactivex.rxjava2:rxandroid:2.1.1")
 
-    implementation ("io.reactivex.rxjava2:rxjava:2.2.8")
+    implementation("io.reactivex.rxjava2:rxjava:2.2.8")
 
 
 
@@ -89,8 +101,10 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
+
     implementation(libs.firebase.bom)
     implementation(libs.firebase.storage)
+    implementation("com.google.firebase:firebase-database:21.0.0")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.work.runtime.ktx)
