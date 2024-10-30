@@ -10,7 +10,8 @@ data class InfoDataClass(
     val height: Int,
     val weight: Int,
     val position: String,
-    val activityType: String
+    val activityType: String,
+    val uuid: String
 )
 
 enum class Sex {
@@ -23,9 +24,9 @@ enum class Sex {
  *
  */
 enum class Position {
-    FOREARM,
-    POCKET,
-    BELT
+    SHOULDER,
+    HAND,
+    POCKET
 }
 
 enum class PositionWearable {
@@ -49,7 +50,10 @@ enum class FrequencyHertz(val value: Int) {
  *
  */
 enum class ActivityType {
-    SLOW_WALKING,
-    FAST_WALKING,
-    RUNNING
+    PLAIN_WALKING,
+    RUNNING,
+    DOWNHILL_WALKING,
+    IRREGULAR_STEPS,
+    BABY_STEPS,
+    UPHILL_WALKING
 }
