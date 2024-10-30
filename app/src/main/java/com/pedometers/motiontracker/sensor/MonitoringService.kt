@@ -12,6 +12,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
@@ -32,7 +33,6 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileWriter
 import java.io.IOException
-import java.util.UUID
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -67,6 +67,8 @@ class MonitoringService : Service() {
     private lateinit var _magnetometerSensorValueMovesense: MutableList<List<String>>
     private lateinit var _timeStampMovesense: MutableList<Long>
     private lateinit var infoUser: InfoDataClass
+
+    private var timestamp: Long = 0L
 
 
     private var fileWriter: FileWriter? = null
@@ -115,9 +117,12 @@ class MonitoringService : Service() {
             intent.getIntExtra("age", 0),
             intent.getIntExtra("height", 0),
             intent.getIntExtra("weight", 0),
-            intent.getStringExtra("position") ?: Position.FOREARM.name,
-            intent.getStringExtra("activityType") ?: "Slow walking"
+            intent.getStringExtra("position") ?: Position.SHOULDER.name,
+            intent.getStringExtra("activityType") ?: "Slow walking",
+            intent.getStringExtra("uuid") ?: ""
         )
+
+        timestamp = intent.getLongExtra("timestamp", 0L)
 
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Monitoring in progress")
@@ -200,6 +205,7 @@ class MonitoringService : Service() {
         return START_NOT_STICKY
     }
 
+
     override fun onDestroy() {
         // Ferma i sensori
         accelerometer.stopListening()
@@ -208,14 +214,12 @@ class MonitoringService : Service() {
 
         mdsSubAcc?.unsubscribe()
 
+
         CoroutineScope(Dispatchers.IO).launch {
             try {
-
-                val randomUUID = UUID.randomUUID()
-
                 file = File(
                     getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
-                    "${randomUUID}_${infoUser.activityType}_${infoUser.position}_${infoUser.age}_${infoUser.sex}_${Build.MANUFACTURER}_${Build.MODEL}.csv"
+                    "${infoUser.uuid}_${timestamp}_${infoUser.activityType}_${infoUser.position}_${infoUser.age}_${infoUser.sex}_${Build.MANUFACTURER}_${Build.MODEL}.csv"
                 )
                 fileWriter = FileWriter(file, true)
                 fileWriter?.append("Timestamp, AccelerometerX, AccelerometerY, AccelerometerZ, GyroscopeX, GyroscopeY, GyroscopeZ, MagnetometerX, MagnetometerY, MagnetometerZ, Sex, Age, Height, Weight, Position, Activity\n")
@@ -239,7 +243,7 @@ class MonitoringService : Service() {
                 if (Movesense.name != null) {
                     fileMovesense = File(
                         getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
-                        "${randomUUID}_${infoUser.activityType}_MOVESENSE_${Movesense.position}_${infoUser.age}_${infoUser.sex}.csv"
+                        "${infoUser.uuid}_${timestamp}_${infoUser.activityType}_MOVESENSE_${Movesense.position}_${infoUser.age}_${infoUser.sex}.csv"
                     )
 
                     fileWriter = FileWriter(fileMovesense, true)
@@ -280,7 +284,7 @@ class MonitoringService : Service() {
                 .setInputData(workDataOf("file" to file!!.absolutePath))
                 .setConstraints(
                     Constraints(
-                        requiredNetworkType = androidx.work.NetworkType.CONNECTED
+                        requiredNetworkType = NetworkType.CONNECTED
                     )
                 )
                 .build()
@@ -297,7 +301,7 @@ class MonitoringService : Service() {
                     .setInputData(workDataOf("file" to fileMovesense!!.absolutePath))
                     .setConstraints(
                         Constraints(
-                            requiredNetworkType = androidx.work.NetworkType.CONNECTED
+                            requiredNetworkType = NetworkType.CONNECTED
                         )
                     )
                     .build()
