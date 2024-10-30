@@ -1,4 +1,4 @@
-package com.pedometers.motiontracker
+package com.pedometers.motiontracker.screen
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
@@ -24,6 +24,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import com.pedometers.motiontracker.BuildConfig
+import com.pedometers.motiontracker.PreferencesManager
 import com.pedometers.motiontracker.navigation.NavigationDestination
 import java.util.UUID
 

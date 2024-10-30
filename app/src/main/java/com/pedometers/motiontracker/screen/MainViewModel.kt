@@ -1,4 +1,4 @@
-package com.pedometers.motiontracker
+package com.pedometers.motiontracker.screen
 
 import android.util.Log
 import androidx.compose.runtime.getValue

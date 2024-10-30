@@ -1,4 +1,4 @@
-package com.pedometers.motiontracker
+package com.pedometers.motiontracker.screen
 
 import android.Manifest
 import android.app.Activity

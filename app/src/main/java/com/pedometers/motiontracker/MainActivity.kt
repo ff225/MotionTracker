@@ -24,6 +24,11 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.pedometers.motiontracker.screen.HomeScreen
+import com.pedometers.motiontracker.screen.HowToUse
+import com.pedometers.motiontracker.screen.InfoScreen
+import com.pedometers.motiontracker.screen.MovesenseScreen
+import com.pedometers.motiontracker.screen.UpdateIDScreen
 import com.pedometers.motiontracker.ui.theme.MotionTrackerTheme
 import dagger.hilt.android.AndroidEntryPoint
 

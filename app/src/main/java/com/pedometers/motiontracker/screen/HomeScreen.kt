@@ -1,4 +1,4 @@
-package com.pedometers.motiontracker
+package com.pedometers.motiontracker.screen
 
 import android.content.Intent
 import android.os.CountDownTimer
@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.pedometers.motiontracker.PreferencesManager
 import com.pedometers.motiontracker.data.ActivityType
 import com.pedometers.motiontracker.data.FirebaseRealTimeDatabase
 import com.pedometers.motiontracker.data.Movesense
@@ -242,7 +243,7 @@ fun HomeScreen(
                                 FirebaseRealTimeDatabase.instance.child(uuid)
                                     .child(timestamp.toString()).setValue(
                                         mapOf(
-                                            "recordingID" to timestamp,
+                                            "ID" to timestamp,
                                             "numSteps" to numSteps
                                         )
                                     )
