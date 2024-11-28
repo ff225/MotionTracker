@@ -1,7 +1,9 @@
 package com.pedometers.motiontracker.screen
 
 import android.content.Intent
+import android.os.Build
 import android.os.CountDownTimer
+import android.os.Environment
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -43,7 +45,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.pedometers.motiontracker.PreferencesManager
+import com.pedometers.motiontracker.SendToFirebaseWorker
 import com.pedometers.motiontracker.data.ActivityType
 import com.pedometers.motiontracker.data.FirebaseRealTimeDatabase
 import com.pedometers.motiontracker.data.Movesense
@@ -51,6 +60,8 @@ import com.pedometers.motiontracker.data.Position
 import com.pedometers.motiontracker.data.Sex
 import com.pedometers.motiontracker.navigation.NavigationDestination
 import com.pedometers.motiontracker.sensor.MonitoringService
+import java.io.File
+import java.io.IOException
 import java.util.UUID
 
 
@@ -81,6 +92,7 @@ fun HomeScreen(
     var permission by remember { mutableStateOf(false) }
     var isEnabled by remember { mutableStateOf(true) }
     var showDialog by remember { mutableStateOf(false) }
+    var showConfirmationDialog by remember { mutableStateOf(false) }
     var timestamp by remember {
         mutableLongStateOf(System.currentTimeMillis())
     }
@@ -210,7 +222,7 @@ fun HomeScreen(
                         }
                     },
                     dismissButton = {
-                        TextButton(
+                        /*TextButton(
                             onClick = {
                                 context.stopService(
                                     Intent(
@@ -223,7 +235,7 @@ fun HomeScreen(
                             },
                         ) {
                             Text(text = "Annulla")
-                        }
+                        }*/
                     },
                     confirmButton = {
                         TextButton(
@@ -239,20 +251,20 @@ fun HomeScreen(
                                 }
                                 Log.d("HomeScreen", "numSteps: $numSteps")
 
-
-                                FirebaseRealTimeDatabase.instance.child(uuid)
+                                /*FirebaseRealTimeDatabase.instance.child(uuid)
                                     .child(timestamp.toString()).setValue(
                                         mapOf(
                                             "ID" to timestamp,
                                             "numSteps" to numSteps
                                         )
                                     )
-
+*/
                                 showDialog = false
+                                showConfirmationDialog = true
                             },
                             enabled = buttonEnabled && numSteps.isNotEmpty()
                         ) {
-                            Text(text = "Invia")
+                            Text(text = "Interrompi registrazione")
                         }
                     },
                     title = {
@@ -277,6 +289,99 @@ fun HomeScreen(
                                 keyboardType = KeyboardType.Number
                             ),
                             modifier = Modifier.padding(8.dp)
+                        )
+                    },
+                    properties = DialogProperties(
+                        dismissOnBackPress = false,
+                        dismissOnClickOutside = false
+                    )
+                )
+            }
+
+            if (showConfirmationDialog) {
+                val file = File(
+                    context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
+                    "${uuid}_${timestamp}_${viewModel.uiState.activityType}_${viewModel.uiState.position}_${viewModel.uiState.age}_${viewModel.uiState.sex}_${Build.MANUFACTURER}_${Build.MODEL}.csv"
+                )
+                val fileMovesense = File(
+                    context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
+                    "${uuid}_${timestamp}_${viewModel.uiState.activityType}_${viewModel.uiState.position}_${viewModel.uiState.age}_${viewModel.uiState}.csv"
+                )
+                AlertDialog(
+                    onDismissRequest = {},
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                try {
+                                    file.delete()
+                                    if (Movesense.name != null) fileMovesense.delete()
+                                } catch (e: IOException) {
+                                    Log.e("HomeScreen", "Error deleting file", e)
+                                }
+                                showConfirmationDialog = false
+                            },
+                        ) {
+                            Text(text = "Annulla")
+                        }
+
+                    },
+                    confirmButton = {
+                        // "${infoUser.uuid}_${timestamp}_${infoUser.activityType}_${infoUser.position}_${infoUser.age}_${infoUser.sex}_${Build.MANUFACTURER}_${Build.MODEL}.csv"
+                        TextButton(
+                            onClick = {
+                                val workRequestSensor =
+                                    OneTimeWorkRequestBuilder<SendToFirebaseWorker>()
+                                        .setInputData(workDataOf("file" to file.absolutePath))
+                                        .setConstraints(
+                                            Constraints(
+                                                requiredNetworkType = NetworkType.CONNECTED
+                                            )
+                                        )
+                                        .build()
+
+
+                                WorkManager.getInstance(context).beginUniqueWork(
+                                    "SendToFirebaseWorker",
+                                    ExistingWorkPolicy.APPEND,
+                                    workRequestSensor
+                                ).enqueue()
+
+
+                                if (Movesense.name != null) {
+                                    val workRequestMovesense =
+                                        OneTimeWorkRequestBuilder<SendToFirebaseWorker>()
+                                            .setInputData(workDataOf("file" to fileMovesense.absolutePath))
+                                            .setConstraints(
+                                                Constraints(
+                                                    requiredNetworkType = NetworkType.CONNECTED
+                                                )
+                                            )
+                                            .build()
+
+                                    WorkManager.getInstance(context).beginUniqueWork(
+                                        "SendToFirebaseWorker",
+                                        ExistingWorkPolicy.APPEND,
+                                        workRequestMovesense
+                                    ).enqueue()
+                                }
+
+                                FirebaseRealTimeDatabase.instance.child(uuid)
+                                    .child(timestamp.toString()).setValue(
+                                        mapOf(
+                                            "ID" to timestamp,
+                                            "numSteps" to numSteps
+                                        )
+                                    )
+                                showConfirmationDialog = false
+                            },
+                        ) {
+                            Text(text = "Salva")
+                        }
+
+                    },
+                    title = {
+                        Text(
+                            text = "Vuoi salvare la registrazione?"
                         )
                     },
                     properties = DialogProperties(
