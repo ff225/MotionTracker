@@ -9,13 +9,13 @@ needed.
 
 ✅ Real-time data acquisition from the following smartphone sensors:
 
-- Accelerometer (measures acceleration forces)
-- Gyroscope (measures device rotation)
-- Magnetometer (measures magnetic field strength)
+- Accelerometer (measures acceleration forces);
+- Gyroscope (measures device rotation);
+- Magnetometer (measures magnetic field strength);
 
 ✅ Real-time acquisition of sensor data from Movesense sensor:
 
-- Accelerometer (measures acceleration forces)
+- Accelerometer (measures acceleration forces);
 - Gyroscope (measures device rotation)
 - Magnetometer (measures magnetic field strength)
 
