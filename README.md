@@ -17,7 +17,7 @@ needed.
 
 - Accelerometer (measures acceleration forces);
 - Gyroscope (measures device rotation);
-- Magnetometer (measures magnetic field strength);
+- Magnetometer (measures magnetic field strength)
 
 ✅ Simple user interface to start, stop collecting data.
 
