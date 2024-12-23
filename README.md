@@ -2,8 +2,7 @@
 
 This Android application collects and logs sensor data from the device's **Accelerometer**,
 **Gyroscope**, and **Magnetometer** and from a Movesense sensor in real-time. The app can be used
-for
-applications such as motion analysis, sensor fusion, or any use case where precise sensor data is
+for applications such as motion analysis, sensor fusion, or any use case where precise sensor data is
 needed.
 
 ## Features
