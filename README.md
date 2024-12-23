@@ -16,8 +16,8 @@ needed.
 ✅ Real-time acquisition of sensor data from Movesense sensor:
 
 - Accelerometer (measures acceleration forces);
-- Gyroscope (measures device rotation)
-- Magnetometer (measures magnetic field strength)
+- Gyroscope (measures device rotation);
+- Magnetometer (measures magnetic field strength);
 
 ✅ Simple user interface to start, stop collecting data.
 
