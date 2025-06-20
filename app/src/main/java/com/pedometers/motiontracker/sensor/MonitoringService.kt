@@ -10,12 +10,18 @@ import android.os.Environment
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.movesense.mds.Mds
 import com.movesense.mds.MdsException
 import com.movesense.mds.MdsNotificationListener
 import com.movesense.mds.MdsSubscription
 import com.pedometers.motiontracker.R
+import com.pedometers.motiontracker.SendToFirebaseWorker
 import com.pedometers.motiontracker.data.InfoDataClass
 import com.pedometers.motiontracker.data.Movesense
 import com.pedometers.motiontracker.data.Position
@@ -274,7 +280,7 @@ class MonitoringService : Service() {
                 _timeStampMovesense.clear()
 
             }
-            /*val workRequestSensor = OneTimeWorkRequestBuilder<SendToFirebaseWorker>()
+            val workRequestSensor = OneTimeWorkRequestBuilder<SendToFirebaseWorker>()
                 .setInputData(workDataOf("file" to file!!.absolutePath))
                 .setConstraints(
                     Constraints(
@@ -305,7 +311,7 @@ class MonitoringService : Service() {
                     ExistingWorkPolicy.APPEND,
                     workRequestMovesense
                 ).enqueue()
-            }*/
+            }
 
 
         }
@@ -345,5 +351,3 @@ class MonitoringService : Service() {
         return element.substring(start, end).replace("}", "").trim()
     }
 }
-
-
