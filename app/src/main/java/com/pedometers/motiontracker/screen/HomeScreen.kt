@@ -98,9 +98,12 @@ fun HomeScreen(
     }
     val preferencesManager = PreferencesManager(context)
 
-    val uuid = preferencesManager.getUUID() ?: UUID.randomUUID().toString().also {
-        Log.d("HomeScreen", "new UUID: $it")
-        preferencesManager.saveUUID(it)
+    // Stable UUID - only computed once per composition
+    val uuid = remember {
+        preferencesManager.getUUID() ?: UUID.randomUUID().toString().also {
+            Log.d("HomeScreen", "Generated new UUID: $it")
+            preferencesManager.saveUUID(it)
+        }
     }
 
     var numSteps by remember { mutableStateOf("") }
