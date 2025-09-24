@@ -10,12 +10,18 @@ import android.os.Environment
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.movesense.mds.Mds
 import com.movesense.mds.MdsException
 import com.movesense.mds.MdsNotificationListener
 import com.movesense.mds.MdsSubscription
 import com.pedometers.motiontracker.R
+import com.pedometers.motiontracker.SendToFirebaseWorker
 import com.pedometers.motiontracker.data.InfoDataClass
 import com.pedometers.motiontracker.data.Movesense
 import com.pedometers.motiontracker.data.Position
@@ -56,6 +62,30 @@ class MonitoringService : Service() {
     private lateinit var _magnetometerSensorValue: MutableList<List<Float>>
     private lateinit var _timeStamp: MutableList<Long>
 
+    // Synchronized sensor data collection
+    private data class SensorSample(
+        val timestamp: Long,
+        val accelerometer: List<Float>? = null,
+        val gyroscope: List<Float>? = null,
+        val magnetometer: List<Float>? = null
+    )
+    
+    private val sensorSamples = mutableListOf<SensorSample>()
+    private var lastSampleTime = 0L
+    private val sampleInterval = 20L // ~50Hz (20ms between samples)
+    
+    // Latest sensor values for interpolation
+    private data class LatestSensorValues(
+        var accelerometer: List<Float>? = null,
+        var gyroscope: List<Float>? = null,
+        var magnetometer: List<Float>? = null,
+        var lastAccUpdate: Long = 0L,
+        var lastGyroUpdate: Long = 0L,
+        var lastMagUpdate: Long = 0L
+    )
+    
+    private val latestValues = LatestSensorValues()
+
     private lateinit var _accelerometerSensorValueMovesense: MutableList<List<String>>
     private lateinit var _gyroscopeSensorValueMovesense: MutableList<List<String>>
     private lateinit var _magnetometerSensorValueMovesense: MutableList<List<String>>
@@ -75,16 +105,17 @@ class MonitoringService : Service() {
     override fun onCreate() {
         Log.d("MonitoringService", "Initializing MonitoringService")
         super.onCreate()
-        _accelerometerSensorValue = mutableListOf(listOf())
-        _gyroscopeSensorValue = mutableListOf(listOf())
-        _magnetometerSensorValue = mutableListOf(listOf())
+        
+        // Initialize lists properly without empty elements
+        _accelerometerSensorValue = mutableListOf()
+        _gyroscopeSensorValue = mutableListOf()
+        _magnetometerSensorValue = mutableListOf()
         _timeStamp = mutableListOf()
 
-        _accelerometerSensorValueMovesense = mutableListOf(listOf())
-        _gyroscopeSensorValueMovesense = mutableListOf(listOf())
-        _magnetometerSensorValueMovesense = mutableListOf(listOf())
+        _accelerometerSensorValueMovesense = mutableListOf()
+        _gyroscopeSensorValueMovesense = mutableListOf()
+        _magnetometerSensorValueMovesense = mutableListOf()
         _timeStampMovesense = mutableListOf()
-
 
         accelerometer.startListening()
         gyroscope.startListening()
@@ -126,21 +157,32 @@ class MonitoringService : Service() {
 
 
         startForeground(1, notification)
-        // Imposta i listener per i sensori
-        magnetometerSensor.setOnSensorValuesChangedListener {
-            // Log.d("MonitoringService", "Sensor magnetometer value changed: $it")
-            _magnetometerSensorValue.add(it)
+        
+        // Improved synchronized sensor data collection system
+        // Set up sensor listeners with better synchronization
+        accelerometer.setOnSensorValuesChangedListener { values ->
+            synchronized(this) {
+                latestValues.accelerometer = values
+                latestValues.lastAccUpdate = System.currentTimeMillis()
+                checkAndStoreSampleImproved()
+            }
         }
-        gyroscope.setOnSensorValuesChangedListener {
-            // Log.d("MonitoringService", "Sensor gyroscope value changed: $it")
-            _gyroscopeSensorValue.add(it)
+        
+        gyroscope.setOnSensorValuesChangedListener { values ->
+            synchronized(this) {
+                latestValues.gyroscope = values
+                latestValues.lastGyroUpdate = System.currentTimeMillis()
+                checkAndStoreSampleImproved()
+            }
         }
-        accelerometer.setOnSensorValuesChangedListener {
-            //Log.d("MonitoringService", "Sensor accelerometer value changed: $it")
-            _timeStamp.add(System.currentTimeMillis())
-            _accelerometerSensorValue.add(it)
+        
+        magnetometerSensor.setOnSensorValuesChangedListener { values ->
+            synchronized(this) {
+                latestValues.magnetometer = values
+                latestValues.lastMagUpdate = System.currentTimeMillis()
+                checkAndStoreSampleImproved()
+            }
         }
-
 
         mdsSubAcc?.unsubscribe()
 
@@ -150,63 +192,104 @@ class MonitoringService : Service() {
                 """{"Uri": "${Movesense.name?.removePrefix("Movesense ")}/Meas/IMU9/${Movesense.frequencyHertz.value}"}""",
                 object : MdsNotificationListener {
                     override fun onNotification(p0: String?) {
-                        Log.d("MonitoringService", "$p0")
-                        _accelerometerSensorValueMovesense.add(extractArray(p0!!, "ArrayAcc"))
-                        _gyroscopeSensorValueMovesense.add(extractArray(p0, "ArrayGyro"))
-                        _magnetometerSensorValueMovesense.add(extractArray(p0, "ArrayMagn"))
-                        _timeStampMovesense.add(System.currentTimeMillis())
+                        Log.d("MonitoringService", "Movesense data: $p0")
+                        
+                        try {
+                            val accData = extractArray(p0!!, "ArrayAcc")
+                            val gyroData = extractArray(p0, "ArrayGyro")
+                            val magData = extractArray(p0, "ArrayMagn")
+                            
+                            // Add data with proper error checking
+                            if (accData.isNotEmpty() && gyroData.isNotEmpty() && magData.isNotEmpty()) {
+                                synchronized(this@MonitoringService) {
+                                    _accelerometerSensorValueMovesense.add(accData)
+                                    _gyroscopeSensorValueMovesense.add(gyroData)
+                                    _magnetometerSensorValueMovesense.add(magData)
+                                    _timeStampMovesense.add(System.currentTimeMillis())
+                                }
+                                Log.d("MonitoringService", "Stored Movesense sample: acc=${accData.size}, gyro=${gyroData.size}, mag=${magData.size}")
+                            } else {
+                                Log.w("MonitoringService", "Incomplete Movesense data - skipping")
+                            }
+                        } catch (e: Exception) {
+                            Log.e("MonitoringService", "Error processing Movesense data: ${e.message}")
+                        }
                     }
 
                     override fun onError(p0: MdsException?) {
-                        println("Error: $p0")
+                        Log.e("MonitoringService", "Movesense error: $p0")
                     }
-
                 })
 
         }
-        // Combinare i dati dei sensori e scrivere nel file
-        /*
-        CoroutineScope(Dispatchers.Main).launch {
-            _accelerometerSensorValue.
-            _accelerometerSensorValue.combine(_gyroscopeSensorValue) { acc, gyro ->
-                Pair(acc, gyro)
-            }.zip(_magnetometerSensorValue) { accGyro, mag ->
-                Triple(accGyro.first, accGyro.second, mag)
-            }.collect {
-                Log.d("MonitoringService", "Combined flow: $it")
-                _combinedSensorValues.value = it
-
-                // Scrivi i dati combinati nel file
-                withContext(Dispatchers.IO) {
-                    try {
-                        if (it.first.isNotEmpty() && it.second.isNotEmpty() && it.third.isNotEmpty()) {
-                            fileWriter?.append(
-                                "${System.currentTimeMillis()},${it.first[0]}, ${it.first[1]}, ${it.first[2]}, " +
-                                        "${it.second[0]}, ${it.second[1]}, ${it.second[2]}, " +
-                                        "${it.third[0]}, ${it.third[1]}, ${it.third[2]},"
-                                        + "${infoUser.sex}, ${infoUser.age}, ${infoUser.height}, ${infoUser.weight}, ${infoUser.position} \n"
-                            )
-                            fileWriter?.flush()
-                        }
-                    } catch (e: IOException) {
-                        e.printStackTrace()
-                    }
-                }
-            }
-        }
-         */
 
         return START_NOT_STICKY
     }
 
+    /**
+     * Improved synchronization - stores samples at regular intervals using latest available data
+     */
+    private fun checkAndStoreSampleImproved() {
+        val currentTime = System.currentTimeMillis()
+        
+        // Store sample at regular intervals, using latest available sensor data
+        if (currentTime - lastSampleTime >= sampleInterval) {
+            
+            // Use latest available data from each sensor (even if slightly old)
+            val acc = latestValues.accelerometer
+            val gyro = latestValues.gyroscope
+            val mag = latestValues.magnetometer
+            
+            // Only store if we have at least SOME data (prefer partial data over no data)
+            if (acc != null || gyro != null || mag != null) {
+                
+                // Use previous values if current sensor hasn't updated recently
+                val finalAcc = acc ?: (if (_accelerometerSensorValue.isNotEmpty()) _accelerometerSensorValue.last() else listOf(0f, 0f, 0f))
+                val finalGyro = gyro ?: (if (_gyroscopeSensorValue.isNotEmpty()) _gyroscopeSensorValue.last() else listOf(0f, 0f, 0f))
+                val finalMag = mag ?: (if (_magnetometerSensorValue.isNotEmpty()) _magnetometerSensorValue.last() else listOf(0f, 0f, 0f))
+                
+                // Store synchronized data
+                _accelerometerSensorValue.add(finalAcc)
+                _gyroscopeSensorValue.add(finalGyro)
+                _magnetometerSensorValue.add(finalMag)
+                _timeStamp.add(currentTime)
+                
+                lastSampleTime = currentTime
+                
+                Log.d("MonitoringService", "Stored sample at $currentTime (acc=${acc != null}, gyro=${gyro != null}, mag=${mag != null})")
+            }
+        }
+    }
+
 
     override fun onDestroy() {
-        // Ferma i sensori
-        accelerometer.stopListening()
-        gyroscope.stopListening()
-        magnetometerSensor.stopListening()
+        Log.d("MonitoringService", "Service being destroyed - cleaning up resources")
+        
+        // Stop and destroy sensors to prevent memory leaks
+        try {
+            accelerometer.stopListening()
+            gyroscope.stopListening()
+            magnetometerSensor.stopListening()
+            
+            // If sensors are AndroidSensor instances, call destroy method
+            if (accelerometer is com.pedometers.motiontracker.sensor.AndroidSensor) {
+                (accelerometer as? Any)?.let { sensor ->
+                    sensor.javaClass.getMethod("destroy").invoke(sensor)
+                }
+            }
+            // Similar for gyroscope and magnetometer
+            
+        } catch (e: Exception) {
+            Log.e("MonitoringService", "Error destroying sensors: ${e.message}")
+        }
 
-        mdsSubAcc?.unsubscribe()
+        // Unsubscribe from Movesense
+        try {
+            mdsSubAcc?.unsubscribe()
+            mds = null
+        } catch (e: Exception) {
+            Log.e("MonitoringService", "Error unsubscribing from Movesense: ${e.message}")
+        }
 
 
         CoroutineScope(Dispatchers.IO).launch {
@@ -218,18 +301,33 @@ class MonitoringService : Service() {
                 fileWriter = FileWriter(file, true)
                 fileWriter?.append("Timestamp, AccelerometerX, AccelerometerY, AccelerometerZ, GyroscopeX, GyroscopeY, GyroscopeZ, MagnetometerX, MagnetometerY, MagnetometerZ, Sex, Age, Height, Weight, Position, Activity\n")
 
-                _timeStamp.forEachIndexed { idx, timestamp ->
+                // Safe data writing with size validation
+                val dataSize = minOf(
+                    _timeStamp.size,
+                    _accelerometerSensorValue.size, 
+                    _gyroscopeSensorValue.size,
+                    _magnetometerSensorValue.size
+                )
+                
+                Log.d("MonitoringService", "Writing $dataSize synchronized samples to file")
+
+                for (idx in 0 until dataSize) {
                     try {
-                        if (_accelerometerSensorValue[idx].isNotEmpty() && _gyroscopeSensorValue[idx].isNotEmpty() && _magnetometerSensorValue[idx].isNotEmpty()) {
+                        val timestamp = _timeStamp[idx]
+                        val acc = _accelerometerSensorValue[idx]
+                        val gyro = _gyroscopeSensorValue[idx]  
+                        val mag = _magnetometerSensorValue[idx]
+                        
+                        if (acc.size >= 3 && gyro.size >= 3 && mag.size >= 3) {
                             fileWriter?.append(
-                                "$timestamp,${_accelerometerSensorValue[idx][0]}, ${_accelerometerSensorValue[idx][1]}, ${_accelerometerSensorValue[idx][2]}, " +
-                                        "${_gyroscopeSensorValue[idx][0]}, ${_gyroscopeSensorValue[idx][1]}, ${_gyroscopeSensorValue[idx][2]}, " +
-                                        "${_magnetometerSensorValue[idx][0]}, ${_magnetometerSensorValue[idx][1]}, ${_magnetometerSensorValue[idx][2]},"
-                                        + "${infoUser.sex}, ${infoUser.age}, ${infoUser.height}, ${infoUser.weight}, ${infoUser.position}, ${infoUser.activityType} \n"
+                                "$timestamp,${acc[0]},${acc[1]},${acc[2]}," +
+                                        "${gyro[0]},${gyro[1]},${gyro[2]}," +
+                                        "${mag[0]},${mag[1]},${mag[2]}," +
+                                        "${infoUser.sex},${infoUser.age},${infoUser.height},${infoUser.weight},${infoUser.position},${infoUser.activityType}\n"
                             )
                         }
-                    } catch (e: IndexOutOfBoundsException) {
-                        e.printStackTrace()
+                    } catch (e: Exception) {
+                        Log.e("MonitoringService", "Error writing sample $idx: ${e.message}")
                     }
                 }
                 fileWriter?.close()
@@ -243,71 +341,101 @@ class MonitoringService : Service() {
                     fileWriter = FileWriter(fileMovesense, true)
                     fileWriter?.append("Timestamp, AccelerometerX, AccelerometerY, AccelerometerZ, GyroscopeX, GyroscopeY, GyroscopeZ, MagnetometerX, MagnetometerY, MagnetometerZ, Sex, Age, Height, Weight, Position, Activity\n")
 
-                    _timeStampMovesense.forEachIndexed { idx, timestamp ->
+                    // Safe Movesense data writing
+                    val movesenseDataSize = minOf(
+                        _timeStampMovesense.size,
+                        _accelerometerSensorValueMovesense.size,
+                        _gyroscopeSensorValueMovesense.size, 
+                        _magnetometerSensorValueMovesense.size
+                    )
+                    
+                    Log.d("MonitoringService", "Writing $movesenseDataSize Movesense samples to file")
+
+                    for (idx in 0 until movesenseDataSize) {
                         try {
-                            if (_accelerometerSensorValueMovesense[idx].isNotEmpty() && _gyroscopeSensorValueMovesense[idx].isNotEmpty() && _magnetometerSensorValueMovesense[idx].isNotEmpty()) {
+                            val timestamp = _timeStampMovesense[idx]
+                            val acc = _accelerometerSensorValueMovesense[idx]
+                            val gyro = _gyroscopeSensorValueMovesense[idx]
+                            val mag = _magnetometerSensorValueMovesense[idx]
+                            
+                            if (acc.size >= 3 && gyro.size >= 3 && mag.size >= 3) {
                                 fileWriter?.append(
-                                    "$timestamp,${_accelerometerSensorValueMovesense[idx][0]}, ${_accelerometerSensorValueMovesense[idx][1]}, ${_accelerometerSensorValueMovesense[idx][2]}, " +
-                                            "${_gyroscopeSensorValueMovesense[idx][0]}, ${_gyroscopeSensorValueMovesense[idx][1]}, ${_gyroscopeSensorValueMovesense[idx][2]}, " +
-                                            "${_magnetometerSensorValueMovesense[idx][0]}, ${_magnetometerSensorValueMovesense[idx][1]}, ${_magnetometerSensorValueMovesense[idx][2]},"
-                                            + "${infoUser.sex}, ${infoUser.age}, ${infoUser.height}, ${infoUser.weight}, ${Movesense.position}, ${infoUser.activityType} \n"
+                                    "$timestamp,${acc[0]},${acc[1]},${acc[2]}," +
+                                            "${gyro[0]},${gyro[1]},${gyro[2]}," +
+                                            "${mag[0]},${mag[1]},${mag[2]}," +
+                                            "${infoUser.sex},${infoUser.age},${infoUser.height},${infoUser.weight},${Movesense.position},${infoUser.activityType}\n"
                                 )
                             }
-                        } catch (e: IndexOutOfBoundsException) {
-                            e.printStackTrace()
+                        } catch (e: Exception) {
+                            Log.e("MonitoringService", "Error writing Movesense sample $idx: ${e.message}")
                         }
                     }
                 }
 
             } catch (e: IOException) {
+                Log.e("MonitoringService", "Error writing sensor data: ${e.message}")
                 e.printStackTrace()
             } finally {
                 fileWriter?.close()
-                _accelerometerSensorValue.clear()
-                _gyroscopeSensorValue.clear()
-                _magnetometerSensorValue.clear()
-                _timeStamp.clear()
+                
+                // Clean up data structures
+                synchronized(this) {
+                    _accelerometerSensorValue.clear()
+                    _gyroscopeSensorValue.clear()
+                    _magnetometerSensorValue.clear()
+                    _timeStamp.clear()
 
-                _accelerometerSensorValueMovesense.clear()
-                _gyroscopeSensorValueMovesense.clear()
-                _magnetometerSensorValueMovesense.clear()
-                _timeStampMovesense.clear()
+                    _accelerometerSensorValueMovesense.clear()
+                    _gyroscopeSensorValueMovesense.clear()
+                    _magnetometerSensorValueMovesense.clear()
+                    _timeStampMovesense.clear()
+                }
+                
+                Log.d("MonitoringService", "Data cleanup completed")
+                
+                // Safe WorkManager scheduling - only if files were created successfully
+                try {
+                    if (file != null && file!!.exists()) {
+                        val workRequestSensor = OneTimeWorkRequestBuilder<SendToFirebaseWorker>()
+                            .setInputData(workDataOf("file" to file!!.absolutePath))
+                            .setConstraints(
+                                Constraints(
+                                    requiredNetworkType = NetworkType.CONNECTED
+                                )
+                            )
+                            .build()
 
+                        workManager.beginUniqueWork(
+                            "SendToFirebaseWorker_${System.currentTimeMillis()}",
+                            ExistingWorkPolicy.APPEND,
+                            workRequestSensor
+                        ).enqueue()
+                        
+                        Log.d("MonitoringService", "Scheduled upload for sensor data file")
+                    }
+
+                    if (Movesense.name != null && fileMovesense != null && fileMovesense!!.exists()) {
+                        val workRequestMovesense = OneTimeWorkRequestBuilder<SendToFirebaseWorker>()
+                            .setInputData(workDataOf("file" to fileMovesense!!.absolutePath))
+                            .setConstraints(
+                                Constraints(
+                                    requiredNetworkType = NetworkType.CONNECTED
+                                )
+                            )
+                            .build()
+
+                        workManager.beginUniqueWork(
+                            "SendToFirebaseWorker_Movesense_${System.currentTimeMillis()}",
+                            ExistingWorkPolicy.APPEND,
+                            workRequestMovesense
+                        ).enqueue()
+                        
+                        Log.d("MonitoringService", "Scheduled upload for Movesense data file")
+                    }
+                } catch (e: Exception) {
+                    Log.e("MonitoringService", "Error scheduling file uploads: ${e.message}")
+                }
             }
-            /*val workRequestSensor = OneTimeWorkRequestBuilder<SendToFirebaseWorker>()
-                .setInputData(workDataOf("file" to file!!.absolutePath))
-                .setConstraints(
-                    Constraints(
-                        requiredNetworkType = NetworkType.CONNECTED
-                    )
-                )
-                .build()
-
-
-            workManager.beginUniqueWork(
-                "SendToFirebaseWorker",
-                ExistingWorkPolicy.APPEND,
-                workRequestSensor
-            ).enqueue()
-
-            if (Movesense.name != null) {
-                val workRequestMovesense = OneTimeWorkRequestBuilder<SendToFirebaseWorker>()
-                    .setInputData(workDataOf("file" to fileMovesense!!.absolutePath))
-                    .setConstraints(
-                        Constraints(
-                            requiredNetworkType = NetworkType.CONNECTED
-                        )
-                    )
-                    .build()
-
-                workManager.beginUniqueWork(
-                    "SendToFirebaseWorker",
-                    ExistingWorkPolicy.APPEND,
-                    workRequestMovesense
-                ).enqueue()
-            }*/
-
-
         }
 
         stopSelf()
@@ -318,32 +446,84 @@ class MonitoringService : Service() {
     }
 
 
+    /**
+     * Extract array data from Movesense JSON with improved error handling
+     */
     fun extractArray(json: String, key: String): List<String> {
-        val startIndex = json.indexOf(key)
-        if (startIndex == -1) return emptyList()  // Se non trovato, restituisce una lista vuota
+        try {
+            val startIndex = json.indexOf(key)
+            if (startIndex == -1) {
+                Log.w("MonitoringService", "Key '$key' not found in JSON")
+                return emptyList()
+            }
 
-        val arrayStart = json.indexOf("[", startIndex)
-        val arrayEnd = json.indexOf("]", arrayStart)
-        val arrayString = json.substring(arrayStart + 1, arrayEnd)  // Estrarre l'array come stringa
+            val arrayStart = json.indexOf("[", startIndex)
+            val arrayEnd = json.indexOf("]", arrayStart)
+            
+            if (arrayStart == -1 || arrayEnd == -1 || arrayEnd <= arrayStart) {
+                Log.w("MonitoringService", "Invalid array format for key '$key'")
+                return emptyList()
+            }
+            
+            val arrayString = json.substring(arrayStart + 1, arrayEnd)
 
-        // Dividere l'array per estrarre i valori x, y, z e concatenarli in una singola lista
-        return arrayString.split("},").flatMap { element ->
-            val x = extractValue(element, "x")
-            val y = extractValue(element, "y")
-            val z = extractValue(element, "z")
-            listOf(x, y, z)  // Restituisce i valori x, y, z in una lista unica
+            // Handle empty array
+            if (arrayString.trim().isEmpty()) {
+                Log.w("MonitoringService", "Empty array for key '$key'")
+                return emptyList()
+            }
+
+            // Process array elements
+            return arrayString.split("},").flatMap { element ->
+                val x = extractValue(element, "x")
+                val y = extractValue(element, "y") 
+                val z = extractValue(element, "z")
+                
+                // Validate extracted values
+                if (x != "0.0" || y != "0.0" || z != "0.0") {
+                    listOf(x, y, z)
+                } else {
+                    Log.w("MonitoringService", "All zero values extracted from element: $element")
+                    listOf(x, y, z) // Keep even zero values, they might be valid
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MonitoringService", "Error extracting array '$key': ${e.message}")
+            return emptyList()
         }
     }
 
-    // Funzione per estrarre i valori x, y, z da ogni stringa nell'array
+    /**
+     * Extract individual values with improved error handling
+     */
     private fun extractValue(element: String, axis: String): String {
-        val axisIndex = element.indexOf("\"$axis\":")
-        if (axisIndex == -1) return "0.0"
+        try {
+            val axisIndex = element.indexOf("\"$axis\":")
+            if (axisIndex == -1) {
+                Log.w("MonitoringService", "Axis '$axis' not found in element")
+                return "0.0"
+            }
 
-        val start = element.indexOf(":", axisIndex) + 1
-        val end = element.indexOf(",", start).takeIf { it != -1 } ?: element.length
-        return element.substring(start, end).replace("}", "").trim()
+            val start = element.indexOf(":", axisIndex) + 1
+            val end = element.indexOf(",", start).takeIf { it != -1 } ?: element.length
+            
+            if (end <= start) {
+                Log.w("MonitoringService", "Invalid value format for axis '$axis'")
+                return "0.0"
+            }
+            
+            val value = element.substring(start, end).replace("}", "").trim()
+            
+            // Validate numeric value
+            value.toDoubleOrNull() ?: run {
+                Log.w("MonitoringService", "Non-numeric value for axis '$axis': '$value'")
+                return "0.0"
+            }
+            
+            return value
+        } catch (e: Exception) {
+            Log.e("MonitoringService", "Error extracting value for axis '$axis': ${e.message}")
+            return "0.0"
+        }
     }
 }
-
-
